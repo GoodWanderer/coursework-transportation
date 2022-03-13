@@ -30,6 +30,8 @@
     #     )
 
 
+from django.core.paginator import Paginator
+
 from .models import Contacts, ContactsMe
 from .serializers import ContactsSerializer, ContactsMeSerializer
 
@@ -42,8 +44,8 @@ from .serializers import PriceForVolumeSerializer
 from .models import CountryForQDate
 from .serializers import CountryForQDateSerializer
 
-from .models import Transaction
-from .serializers import TransactionSerializer
+from .models import Transaction, TransactionStatus
+from .serializers import TransactionSerializer, TransactionStatusSerializer
 
 from .models import Blog, BlogLike
 from .serializers import BlogSerializer
@@ -55,7 +57,7 @@ from rest_framework.response import Response
 
 
 
-@api_view()
+@api_view(['GET'])
 @authentication_classes(())
 @permission_classes(())
 def contacts_view(request):
@@ -183,7 +185,6 @@ def get_price_transportation(request):
 def get_price_storage(request):
   if request.method == "POST":
     data = request.data
-
     try:      
       reqObj = data['data']
     except:
@@ -255,72 +256,93 @@ def get_price_storage(request):
       return Response({"status": "server_get_error"})
 
 
+from .serializers import TransactionOrderSerializer
 
 @api_view(['POST'])
 @authentication_classes(())
 @permission_classes(())
 def order(request):
   if request.method == "POST":
+    try:
       data = request.data
-      serializers = TransactionSerializer(data=data)
+      serializers = TransactionOrderSerializer(data=data)
+
       if not serializers.is_valid():
         return Response({"status": "server_get_error"})
 
       serializers.save()
-      return Response({"status": "success"})
 
+      transaction = Transaction.objects.get(id=serializers.data['id'])
+      transactionStatus = TransactionStatus(t=transaction,  status_details=1)
+      transactionStatus.save()
+
+      return Response({"status": "success"})
+    except:
+      return Response({"status": "server_get_error"})
+
+from django.conf import settings
+from django.utils import dateformat
 
 
 @api_view(['GET'])
 @authentication_classes(())
 @permission_classes(())
 def get_order_status(request, key):
-  data = Transaction.objects.filter(key=key).first()
-  if data is not None:
-    if data.status_detail is not None:
-      data1 = data.status_detail.all()
-      if data1 is not None and data1.count() > 0:
-        arr = []
-        for d in data1:
-          arr.append({
-            'date': '{}.{}.{}'.format(d.date_status.day, d.date_status.month, d.date_status.year),
-            'status': d.typeOfSending_choise[int(d.status_details)-1][1]
-          })
-        return Response({"status": "success_1", "data": arr})
-      else:
-        return Response({"status": "success_2", "data": [{
-            'date': "Детальный статус заказа недоступен (краткий статус заказа):",
-            'status': data.typeOfSending_choise[int(data.status)-1][1]
-        },]})
+  transaction = Transaction.objects.filter(key=key).first()
+  if transaction is not None:
+    statuses = transaction.status_detail.all().order_by('-status_details')
+    if statuses is not None:
+      arr = []
+      for status in statuses:
+        arr.append({
+          'date': dateformat.format(status.date_status, settings.DATE_FORMAT),
+          'status': status.typeOfSending_choise[int(status.status_details)-1][1]
+        })
+      return Response({"status": "success", "data": arr})
 
   return Response({"status": "bad_data"})
 
+
+@api_view(['GET'])
+@authentication_classes(())
+@permission_classes(())
+def get_countrys(request):
+  countrys_list = PriceForWay.objects.all().values('from_country')
+  # countrys = CountryForQDateSerializer(countrys_list, many=True)
+  return Response({"status": "success", "data": countrys_list})
 
 
 @api_view(['GET'])
 @authentication_classes(())
 @permission_classes(())
 def get_order(request, id):
-  data_list = Transaction.objects.filter(user=id)
+  data_list = Transaction.objects.filter(user=id).order_by('-id')
   transaction = TransactionSerializer(data_list, many=True)
 
-  arr = []
   for item in transaction.data:
-    item['status'] = data_list[0].typeOfSending_choise[int(item['status'])-1][1]
+    for status in item['status_detail']:
+      item['status'] = data_list[0].typeOfSending_choise[int(status['status_details'])-1][1]
 
   return Response({"status": "success", "data": transaction.data})
 
 
-@api_view()
+
+@api_view(['GET'])
 @authentication_classes(())
 @permission_classes(())
-def get_blog(request):
+def get_blog(request, numPage, qItemsForPage):
   try:
-    blog_list = Blog.objects.all()
-    blog = BlogSerializer(blog_list, many=True)
-    return Response({"status": "success", 'data': blog.data})
+    blog_list = Blog.objects.all().order_by('-date')
+
+    pagin = Paginator(blog_list, qItemsForPage)
+    pagin_lsit = pagin.page(numPage)
+
+    blog = BlogSerializer(pagin_lsit, many=True)
+    return Response({"status": "success", 'data': blog.data, 'qPages': pagin.num_pages})
   except:
-    return Response({"status": "bad_data", 'data': []})
+    return Response({"status": "bad_data", 'data': [], 'qPages': 0})
+
+
 
 
 @api_view(['POST'])

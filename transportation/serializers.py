@@ -1,13 +1,10 @@
 from rest_framework import fields, serializers
 
 from .models import Contacts, ContactsMe
-
 from .models import PriceForWay, PriceForWayTo
 from .models import CountryForQDate, PriceForQDate
 from .models import PriceForWeight, PriceForVolume
-
-from .models import Transaction
-
+from .models import Transaction, TransactionStatus
 from .models import Blog, BlogLike
 
 
@@ -60,13 +57,40 @@ class CountryForQDateSerializer(serializers.ModelSerializer):
     fields = ("id", "pForQDate", "country")
 
 
+class TransactionStatusSerializer(serializers.ModelSerializer):
+  date_status = serializers.DateField(format="%d-%m-%Y")
+  class Meta:
+    model = TransactionStatus
+    fields = ('date_status', 'status_details')
   
 class TransactionSerializer(serializers.ModelSerializer):
+  status_detail = TransactionStatusSerializer(many=True)
   class Meta:
     model = Transaction
-    fields = '__all__'
+    fields = (
+      'id', 'key', 'user', 
+      'from_country', 'from_city', 'from_zip', 'from_address', 'from_name', 'from_phone', 
+      'to_country', 'to_city', 'to_zip', 'to_address', 'to_name', 'to_phone', 
+      'weight', 'volume', 'price', 'paid', 'status', 
+      'status_detail'
+    )
 
 
+class TransactionOrderSerializer(serializers.ModelSerializer):
+  class Meta:
+    model = Transaction
+    fields = (
+      'id', 'key', 'user', 
+      'from_country', 'from_city', 'from_zip', 'from_address', 'from_name', 'from_phone', 
+      'to_country', 'to_city', 'to_zip', 'to_address', 'to_name', 'to_phone', 
+      'weight', 'volume', 'price', 'paid', 'status', 
+    )
+
+
+class CountrySerializer(serializers.ModelSerializer):
+  class Meta:
+    model = PriceForWay
+    fields = ("from_country")
 
 class BlogLikeSerializer(serializers.ModelSerializer):
   class Meta:
